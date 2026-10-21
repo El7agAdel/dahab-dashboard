@@ -759,3 +759,25 @@ All 78 routes read from `/api/docs-json` (the Swagger page shows the same docume
   - The `contract/` folder is dropped.
   - `npm audit`: dev-only findings are accepted; production must stay at 0.
   - Spec sections 2, 3.1, 3.2, 3.4, 4.2 and 8 and registry row M10 are updated to match.
+
+---
+
+## 13. Live spec update (2026-10-22)
+
+The backend added categories, items and banners: 98 routes, up from 78. Uploads gained the `CATEGORY_IMAGE`, `ITEM_IMAGE` and `BANNER_IMAGE` purposes. Auth, `/me`, users, roles and permissions are unchanged, and roles still have no colour field (M13).
+
+**Where the real routes differ from our assumptions:**
+- Items and banners save with `PUT` and the whole form, and a text left out is cleared.
+- The list switches are `PATCH /items/:id { isAvailable }` and `PATCH /banners/:id { isVisible }`.
+- Item create has no `isAvailable` field, so when the switch is on, the dashboard creates the item and then switches it on.
+- The backend allows 1–20 variants and an optional category image. Our tighter rules stay as dashboard rules.
+- 409 codes for blocked actions aren't documented.
+
+**Decision (user):**
+- Development uses the real backend through the Vite proxy; the user signs in with their own staff account.
+- MSW stays only in unit and component tests.
+- End-to-end tests stub the API with Playwright `page.route()`.
+- The in-app mock API, demo login and `VITE_API_MOCKING` are dropped.
+- Mock registry rows M1–M6, M8–M10 and M12 are retired. Still open: M7 (`can()` off on screens), M11 (text limits), M13 (role colour), M14 (language saved in the browser).
+
+The spec, plan (revision note), feature map, `backend-openapi.json` and `backend-api-reference.md` are updated to match.

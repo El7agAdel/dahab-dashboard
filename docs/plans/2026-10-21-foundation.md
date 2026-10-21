@@ -60,8 +60,8 @@
 | # | Decision | Why |
 |---|---|---|
 | D1 | Keep **Oxlint** next to ESLint | create-vue 3.24 always adds it with ESLint. It runs in milliseconds, and `eslint-plugin-oxlint` switches off the ESLint rules it already covers. |
-| D2 | Serve the MSW worker with **MSW 3's own Vite plugin** (`msw/vite`, `mode: 'worker-only'`, dev server only), replacing `npx msw init public` | No `public/mockServiceWorker.js` is committed, nothing reaches any build, and the worker always matches the installed MSW. Spec rows M3 and 7.1 change to match. |
-| D3 | Playwright always runs against the **dev server** | The mock API needs it; `vite preview` serves a production build without MSW. |
+| D2 | ~~Serve the MSW worker with its Vite plugin~~ **Retired 2026-10-22:** no mock API in the app. | The backend now has every route phase 1 uses. |
+| D3 | Playwright runs against the **dev server**, with the API stubbed through `page.route()` | No mock code in the app; each test stubs only what it needs. |
 | D4 | Committed `.env.development` and `.env.test`; personal overrides in `.env.local` (git-ignored); no `.env.example` | Vite's own convention. Values are public (spec 10). |
 | D5 | `VITE_STOREFRONT_URL` is optional; "Open store" and "Back to the store" are hidden when it isn't set | The storefront URL isn't known yet, and we shouldn't invent one. |
 | D6 | Semantic colours use Tailwind's per-utility namespaces (`--background-color-*`, `--text-color-*`, `--border-color-*`), so classes read `bg-page`, `text-primary`, `border-default` | Checked against Tailwind 4.3.3 on 2026-10-21. Avoids `bg-bg-page`. |
@@ -75,13 +75,27 @@
 | D14 | Login errors are chosen by HTTP status: 401 wrong details · 403 suspended · 429 too many attempts (minutes from `Retry-After` when present) | The live backend's codes for suspended and locked-out accounts aren't documented. |
 | D15 | An account with two-step sign-in turned on gets a clear message instead of a broken sign-in | 2FA is out of phase 1, but the backend can still answer `twoFactorRequired: true`. |
 | D16 | Team & access requires the permission keys `user:read` **and** `role:read` | Matches the Swagger key style. Plan 2 checks the keys against `GET /permissions`. |
-| D17 | Demo credentials reach the login page through `app.provide` from `plugins/msw.ts` | Keeps components from importing mocks (M4 stays in one place). |
+| D17 | ~~Demo credentials through `app.provide`~~ **Retired 2026-10-22:** no demo login; staff sign in with their own accounts. | — |
 | D18 | Forgot password accepts an email or an international phone number (`+20…`) | Same phone format as members (spec 5.7). |
 | D19 | Resend is always available; the countdown shows when the code expires | The simplest version of "5-minute countdown, Resend". |
 | D20 | The "Store is live" dot from the login design is left out | No data source. |
 | D21 | Sentry source-map upload moves to the deployment plan | It needs a CI secret and the host, both decided later. |
 | D22 | A toast with the same text as one already showing isn't added again | Repeated 403s would otherwise stack "Your access has changed". |
 | D23 | axios timeout 30 s; nothing retries automatically (a failed load shows Retry) | The spec has no number for the timeout; no data library means no automatic retries. |
+
+## Revision 2026-10-22: the backend built the catalog
+
+The live spec now has categories, items and banners (98 routes). The user decided: **development uses the real backend; MSW only in unit and component tests; end-to-end tests stub the API with Playwright `page.route()`.** The in-app mock API is gone, which retires registry rows M1–M6, M8–M10 and M12.
+
+Changes to the tasks below:
+- **Task 6:** unchanged.
+- **Task 7:** `types/auth.ts` and `authService` only. No `mocks/db.ts`, fixtures, auth handlers or `browser.ts`. Tests use inline `server.use()` handlers with small test fixtures.
+- **Task 8:** `signInAs()` stubs `/auth/login` and `/me` with `server.use()` instead of using a mock database.
+- **Task 12:** no demo-credentials box (`AuthDemoCredentials`, `demoCredentialsKey`).
+- **Task 13:** forgot-password tests stub the three routes inline.
+- **Task 14:** no `plugins/msw.ts` and no MSW Vite plugin; `main.ts` starts no mocks. `.env.development` gains `API_PROXY_TARGET` for the dev proxy. The manual check signs in with the user's own account.
+- **Task 16:** e2e tests stub routes with `page.route()`; `e2e/fixtures.ts` holds the response builders.
+- **Task 17:** no "MSW never ships" grep in CI (lint already keeps `msw` out of app code).
 
 ## Review Focus
 
@@ -1694,23 +1708,22 @@ Each plan is written in full when we reach it, against the code as it stands the
 - Permission label translations.
 - End-to-end: create a member and a role.
 
-**Plan 3 — Categories (mock).**
-- `contract/openapi.yaml` for categories, items and banners (M10).
-- `mocks/rules.ts` (G1, G5).
+**Plan 3 — Categories (real backend).**
+- Types written from the live spec; uploads with `CATEGORY_IMAGE`.
 - BaseFieldLocalized.
 - List in store order with item counts; inline names; image; on/off (blocked when a visible banner links to it); up/down reorder; create (a sheet on phones); delete (blocked).
 - End-to-end: blocked category hide.
 
-**Plan 4 — Items (mock).**
+**Plan 4 — Items (real backend).**
 - `utils/money.ts` (`formatPrice`, `parsePriceInput`); BasePriceInput; the arch image utility.
 - List with category chips and the sort order from rule 18; inline price (saved immediately, rolls back on failure, confirms changes over 50%); Available switch.
-- Create/edit drawer with variants (type; 1–4, or 1–8 for flavours; unique names); delete (blocked by banner links).
+- Create/edit drawer with variants (type; 1–4, or 1–8 for flavours; unique names), saved with `PUT` and the whole form; create, then switch on when the form's Available is on (two calls); delete (blocked by banner links).
 - End-to-end: price edit, create item.
 
-**Plan 5 — Home banners (mock).**
+**Plan 5 — Home banners (real backend).**
 - Fraunces and Aref Ruqaa fonts.
 - Grid in rotation order; reorder; Visible switch with the G2 counters; the last visible banner protected.
-- Create/edit drawer with live preview (beside the form on desktop, Edit/Preview tabs on phones): small card, link targets, eyebrow, title, body, button.
+- Create/edit drawer, saved with `PUT` and the whole form, with live preview (beside the form on desktop, Edit/Preview tabs on phones): small card, link targets, eyebrow, title, body, button.
 - End-to-end: banner limits.
 
 **Deployment plan (when hosting is decided).**

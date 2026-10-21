@@ -47,7 +47,7 @@ Visual adjustments are expected once the site runs; this spec fixes structure an
 | Forms / validation | VeeValidate 4.15 · Zod 3 · `@vee-validate/zod` (decided 2026-10-21: VeeValidate 5 is still beta; move to v5 + Zod 4 once it's stable) |
 | Translation | vue-i18n · dates and numbers via `Intl` |
 | Utilities | VueUse |
-| Mocking | MSW v3 (current stable; needs Node ≥ 22.12) |
+| Mocking | MSW v3 in unit and component tests only; Playwright `page.route()` in end-to-end tests (decided 2026-10-22: the backend now has every route phase 1 uses) |
 | Tests | Vitest + Vue Testing Library · Playwright |
 | Lint / format | ESLint (flat config) + Prettier + prettier-plugin-tailwindcss |
 | Error monitoring | Sentry (free tier) |
@@ -66,7 +66,7 @@ Organised by file type, with a feature subfolder inside each type folder.
 dahab-dashboard/
 ├─ docs/                # this spec, the implementation plan
 ├─ e2e/                 # Playwright
-├─ public/              # static files, MSW worker
+├─ public/              # static files (favicon)
 └─ src/
    ├─ main.ts           # start-up, global error handler (toast), http hooks wiring
    ├─ App.vue
@@ -92,17 +92,17 @@ dahab-dashboard/
    ├─ types/            # one per feature, written from the backend reference
    ├─ router/           # index.ts, guards.ts, routes/<feature>.ts, routes/dev.ts (dev only)
    ├─ i18n/             # setup + locales/ar.json, en.json
-   ├─ plugins/          # msw, sentry
+   ├─ plugins/          # sentry
    ├─ utils/            # money, dates, localized text, digits
    ├─ constants/        # navigation.ts (incl. hidden out-of-scope items)
    ├─ config/env.ts
-   ├─ mocks/            # browser.ts, db.ts, rules.ts, fixtures/, handlers/
+   ├─ mocks/            # test-only: MSW server and response helpers
    └─ assets/           # styles/ (main.css, tokens.css), fonts/, logos/
 ```
 
 ### 3.2 Layers and import rules
 
-Data flows one way: **view → component → composable → service → `http.ts` → backend (or MSW)**.
+Data flows one way: **view → component → composable → service → `http.ts` → backend**.
 
 | Folder | May import | Must never import |
 |---|---|---|
@@ -113,7 +113,7 @@ Data flows one way: **view → component → composable → service → `http.ts
 | `stores` | types | services, composables, components (state only; composables do the fetching) |
 | `services` | `http.ts`, types | composables, components, stores, router |
 | `schemas` · `types` · `utils` | each other | anything Vue |
-| `mocks` | types | — (imported only by `plugins/msw` and the test setup) |
+| `mocks` | types | — (imported only by tests) |
 
 Feature dependencies: banners → items, categories · items → categories · everything → auth. No cycles.
 
@@ -304,13 +304,13 @@ JPG, PNG, WebP up to 20 MB, checked before upload. Wrong shape: fills the frame,
 ### 7.1 Code rules
 - **Lint (type-aware):** per-folder `no-restricted-imports` (3.2) and library containment · `import-x/no-cycle` · `import-x/no-extraneous-dependencies` · `vue/no-restricted-class` (physical left/right classes) · `vue/no-v-html` · `plugin:vue/recommended` · `no-warning-comments` on `MOCK:` (warning in development, error in the pre-launch check) · `simple-import-sort`.
 - **Style:** create-vue Prettier defaults — single quotes, no semicolons, 2 spaces, 100-char lines, trailing commas, Tailwind class sorting; LF line endings (`.gitattributes`); final newline (`.editorconfig`).
-- **npm:** `.npmrc` `ignore-scripts=true` (setup by hand: `npx msw init public`, `npx playwright install`) · `npm ci` in CI · `npm audit --omit=dev --audit-level=high`.
+- **npm:** `.npmrc` `ignore-scripts=true` (setup by hand: `npx playwright install`) · `npm ci` in CI · `npm audit --omit=dev --audit-level=high`.
 - **Security:** no `v-html`; Content Security Policy (own scripts only, `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`, images from our origin + the API/upload host + `blob:`, API calls only to the API); `rel="noopener noreferrer"` on external links.
 
 ### 7.2 Tests
-- **Unit:** Zod schemas, money, error-code mapping, `useCan`, mock guarantees.
+- **Unit:** Zod schemas, money, error-code mapping, `useCan`, the dashboard's own guarantee checks.
 - **Component:** inline price save / rollback / >50% confirm, item form and variants, unsaved-changes guard, `BaseFieldLocalized`.
-- **End-to-end (mock API):** sign in, forgot password, price edit, create item, blocked category hide, banner limits, create member and role, switch to Arabic, phone menu.
+- **End-to-end (API stubbed with Playwright `page.route()`):** sign in, forgot password, price edit, create item, blocked category hide, banner limits, create member and role, switch to Arabic, phone menu.
 - **Enough** = every business rule and guarantee, and every bug fix, has a test. No percentage gate.
 - **Browsers:** automated in Chromium, Firefox and WebKit at desktop and phone sizes; manual check on Windows, Mac, iPhone and Android before each release. Supported: Chrome/Edge/Brave 107+, Firefox 104+, Safari/iOS 16+.
 - **Screenshot comparisons:** added after the visual adjustments settle, run in CI only.
@@ -326,45 +326,42 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 ## 8. Backend integration
 
 - **Backend:** `http://167.71.141.187` is the one the dashboard hooks onto (development and staging). Local development proxies `/api` through Vite.
-- **Built and used now:** `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password/{request,verify,reset}`, `/me`, `/users` (+ `/suspend`, `/unsuspend`, `/email`, `/phone`), `/users/:userId/roles` (`PUT`), `/roles`, `/roles/:roleId/permissions` (`PUT`), `/permissions`, `/uploads`.
-- **Designed, not built (mocked to match `backend-architecture.md`):** `/categories`, `/items`, `/banners`, including `PUT /<resource>/order`, `PATCH /items/:id/variants/:variantId`, `PATCH /items/:id/availability`, `PATCH /banners/:id/visibility`.
+- **Built and used now:** `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password/{request,verify,reset}`, `/me`, `/users` (+ `/suspend`, `/unsuspend`, `/email`, `/phone`), `/users/:userId/roles` (`PUT`), `/roles`, `/roles/:roleId/permissions` (`PUT`), `/permissions`, `/uploads`, `/categories` (+ `PUT /order`), `/items` (+ `PATCH /:id/variants/:variantId`), `/banners` (+ `PUT /order`). Everything phase 1 uses exists (2026-10-22).
+- **Catalog writes:**
+  - Items and banners save with **`PUT` and the whole form**; a text left out is cleared, so the drawers always send everything.
+  - The list switches are `PATCH /items/:id { isAvailable }` and `PATCH /banners/:id { isVisible }`; categories change name, image and `isActive` with `PATCH /categories/:id`.
+  - Creating an item has no `isAvailable` field: when the create form's switch is on, the dashboard creates the item, then switches it on (two calls).
+  - Reordering sends every id once, in the new order.
+  - The backend allows 1–20 variants and an optional category image; our tighter limits (5.3 rule 15, 5.2 rule 13) stay dashboard rules.
+  - The 409 codes for blocked actions aren't documented: the dashboard checks first and explains (5.6); a backend refusal shows the backend's message.
 - **Responses** are wrapped `{ success, message, data, … }` (lists add `meta`); services unwrap `data`.
 - **Errors:** `{ success: false, message, error: { code, details }, path, timestamp, requestId }`. Codes are translated (`errors.<CODE>` in both locale files). `VALIDATION_FAILED` carries `details: { field: [English messages] }`; the dashboard shows its own translated messages for fields it validates and the backend's text otherwise. Rate limit: 100 requests per minute (429 shows a "wait a moment" toast).
 - **Localized text:** `{ ar, en }` objects. **Money:** integer piasters. **IDs:** opaque strings.
-- **Full route reference:** `docs/backend-api-reference.md` (all 78 routes with descriptions, parameters, schemas and examples, generated from the spec on 2026-10-21).
+- **Full route reference:** `docs/backend-api-reference.md` (all 98 routes with descriptions, parameters, schemas and examples, generated from the spec on 2026-10-22).
 - **Members list:** `GET /users?include=roles&limit=500` (without `include=roles` only a role count comes back). Members with status `PENDING_DELETION` or `DELETED` are not shown; Active and Suspended are.
 - **Creating a member** takes up to three calls: `POST /users` (username, email, phone, password, names, avatar key) → `PUT /users/:id/roles { roleIds: [roleId] }` → `POST /users/:id/suspend` if "Account active" is off. If a later call fails, the drawer switches to editing the member that now exists and offers to retry the missing step.
 - **Editing a member** sends only what changed: `PATCH /users/:id` (username, names, avatar) · `PATCH /users/:id/email` · `PATCH /users/:id/phone` · `PUT /users/:id/roles` · suspend / unsuspend.
 - **Roles:** creating is one call (`POST /roles` with `permissionKeys`); editing is `PATCH /roles/:id` (name, description) + `PUT /roles/:id/permissions`. The roles list already includes member counts, permission counts and the permissions, so "Access at a glance" needs no extra calls.
 - **Permission labels:** the backend sends English `displayName`, `description` and `group`. The dashboard translates them by permission key and group in its locale files, falling back to the backend's English for any key it doesn't know yet.
 - **Forgot password:** `verify` returns a new `transactionalToken`, and that one goes to `reset`.
-- **Uploads:** `GET /uploads/purposes` says which file types and sizes each purpose allows; the dashboard reads it instead of hard-coding (20 MB is only the fallback). Today only `USER_AVATAR` exists.
+- **Uploads:** `GET /uploads/purposes` says which file types and sizes each purpose allows; the dashboard reads it instead of hard-coding (20 MB is only the fallback). Purposes: `USER_AVATAR`, `CATEGORY_IMAGE`, `ITEM_IMAGE`, `BANNER_IMAGE` (the banner's small-card image uses `BANNER_IMAGE` too).
 - **Not used in phase 1:** registration, re-authentication, email/phone verification, sessions and force-logout, account deletion, device tokens, notifications, broadcasts, audit logs.
-- **Types:** written by hand in `types/<feature>.ts`. Each one names the backend schema it mirrors (e.g. `ProfileDto`) and is checked against `docs/backend-openapi.json` whenever the backend changes. Categories, items and banners follow `docs/backend-architecture.md` until the backend builds them.
+- **Types:** written by hand in `types/<feature>.ts`. Each one names the backend schema it mirrors (e.g. `ProfileDto`) and is checked against `docs/backend-openapi.json` whenever the backend changes.
 
 ---
 
 ## 9. Mocking
 
-- One switch: `VITE_API_MOCKING` (on locally by default, off elsewhere). MSW never ships in production.
-- `mocks/db.ts` in-memory data seeded from `mocks/fixtures/` (the designs' content), reset on refresh. One handler file per feature; guarantees in `mocks/rules.ts`. Realistic delay; unknown URLs fail loudly. The demo credentials box shows only with mocks on.
+- **No mock API inside the app** (decided 2026-10-22). Development talks to the real backend through the Vite proxy; staff sign in with their own accounts.
+- Unit and component tests use MSW in Node: each test sets up only the responses it needs, and unknown URLs fail loudly.
+- End-to-end tests stub the API with Playwright `page.route()`.
 - **Every mock-related line outside `mocks/` carries `// MOCK:`**; before launch, a search for it must return nothing.
 
-**Mock registry** (each removed when its replacement exists)
+**Mock registry** (each removed when its replacement exists; M1–M6, M8–M10 and M12 retired 2026-10-22 with the in-app mock API)
 | # | What | Replaced by |
 |---|---|---|
-| M1 | The whole mock API | The real backend, endpoint by endpoint |
-| M2 | `VITE_API_MOCKING` flag | — (delete) |
-| M3 | MSW start-up (`plugins/msw.ts`, `public/mockServiceWorker.js`) | — (delete) |
-| M4 | Demo credentials box | — (delete) |
-| M5 | Sample data (`mocks/fixtures`) | Real data |
-| M6 | Sample permission list | `GET /permissions` |
 | M7 | `can()` switched off on screens | Switching it on (completion, not removal) |
-| M8 | Mock sign-in, tokens, forgot-password code | Backend auth |
-| M9 | Mock uploads (browser links) | `/uploads` |
-| M10 | Categories, items, banners types written from the backend's design doc | Checked against the live spec once built |
 | M11 | Proposed text limits | Final limits |
-| M12 | `msw` package | Removed if tests stop using it |
 | M13 | Role colour field | The backend's field once it's in the live spec |
 | M14 | Language saved in the browser | Saving to the account once the backend accepts `ar` |
 
@@ -374,10 +371,9 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 
 | | Local | Staging | Production |
 |---|---|---|---|
-| API | Mocks, or the existing backend | The existing backend | Decided later |
-| Demo credentials | Yes (with mocks) | No | No |
+| API | The existing backend (Vite proxy) | The existing backend | Decided later |
 
-- **Settings:** `VITE_API_BASE_URL`, `VITE_STOREFRONT_URL`, `VITE_API_MOCKING`, `VITE_APP_ENV`, `VITE_SENTRY_DSN` — all public; no secrets.
+- **Settings:** `VITE_API_BASE_URL`, `VITE_STOREFRONT_URL`, `VITE_APP_ENV`, `VITE_SENTRY_DSN` — all public; no secrets.
 - **Code:** GitHub; Dependabot weekly grouped updates with a 5-day cooldown.
 - **Releases:** merges to `main` deploy to staging; production deploys from version tags after the manual device and speed checks; rollback = redeploy the previous tag.
 - **Monitoring:** Sentry in staging and production, loaded after start-up, tokens and personal data scrubbed (member ID only), source maps uploaded privately (client agreed).
@@ -387,4 +383,4 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 
 ## 11. Watch list
 - The role colour field is added in the backend but not yet in the live spec (M13).
-- Categories, items and banners are not built yet; the dashboard runs on mocks for them.
+- The backend's 409 codes for blocked actions are undocumented; map them once they're known.

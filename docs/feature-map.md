@@ -2,7 +2,7 @@
 
 What the dashboard does in phase 1. Details and rules live in the spec: `docs/specs/2026-10-20-dashboard-phase-1-design.md`.
 
-**Data source:** 🟢 real backend (live now) · 🟡 mocks until the backend builds the endpoints
+**Data source:** 🟢 real backend (every phase-1 route exists as of 2026-10-22) · 🟡 waiting on a backend field
 
 ---
 
@@ -24,7 +24,7 @@ What the dashboard does in phase 1. Details and rules live in the spec: `docs/sp
 | Welcome screen | "Good evening, Omar" + today's date |
 | System screens | Logo splash on load, 404 page, offline banner, toasts |
 
-## 3. Items (products) 🟡
+## 3. Items (products) 🟢
 
 | Feature | What staff can do |
 |---|---|
@@ -33,7 +33,7 @@ What the dashboard does in phase 1. Details and rules live in the spec: `docs/sp
 | Create / edit | Category, photo, Arabic + English name, badge, variant type (weight / size / pieces: up to 4; flavor: up to 8) with a name and price each, cake message allowed, description, ingredients, storage, Available |
 | Delete | With confirmation; blocked if a visible banner links to the item |
 
-## 4. Categories 🟡
+## 4. Categories 🟢
 
 | Feature | What staff can do |
 |---|---|
@@ -42,7 +42,7 @@ What the dashboard does in phase 1. Details and rules live in the spec: `docs/sp
 | Create | Name in both languages + image |
 | Delete | Blocked while it has items or a banner links to it |
 
-## 5. Home banners 🟡
+## 5. Home banners 🟢
 
 | Feature | What staff can do |
 |---|---|

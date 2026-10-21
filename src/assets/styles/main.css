@@ -1,0 +1,31 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Self-hosted fonts, used weights only. Each file carries every subset with its own
+   unicode-range, so the Arabic files download only when Arabic text is on screen. */
+@import '@fontsource/montserrat/700.css';
+@import '@fontsource/montserrat/800.css';
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/600.css';
+@import '@fontsource/dm-sans/700.css';
+@import '@fontsource/el-messiri/700.css';
+@import '@fontsource/ibm-plex-sans-arabic/400.css';
+@import '@fontsource/ibm-plex-sans-arabic/500.css';
+@import '@fontsource/ibm-plex-sans-arabic/600.css';
+@import '@fontsource/ibm-plex-sans-arabic/700.css';
+
+/* The docs mention class names; keep them out of the generated CSS. */
+@source not '../../../docs';
+
+@layer base {
+  body {
+    @apply bg-page font-sans text-body text-primary;
+  }
+
+  /* Keyboard focus only (spec 6.4); dark surfaces switch the colour to cream. */
+  :focus-visible {
+    outline: 2px solid var(--color-espresso-900);
+    outline-offset: 2px;
+  }
+}

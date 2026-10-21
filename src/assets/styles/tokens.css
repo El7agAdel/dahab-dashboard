@@ -1,0 +1,99 @@
+/* Design tokens (spec 6.1). Names follow the storefront design system (Color page). */
+@theme {
+  /* Primitives */
+  --color-espresso-900: #2b1d15;
+  --color-espresso-900-a45: rgb(43 29 21 / 0.45);
+  --color-cocoa-700: #6b4e3d;
+  --color-cocoa-600: #6e5847;
+  --color-cocoa-500: #7a6555;
+  --color-gold-400: #d9c49a;
+  --color-sand-400: #d5c7ad;
+  --color-sand-300: #d8cbb4;
+  --color-sand-200: #e3d8c3;
+  --color-sand-100: #eae0cb;
+  --color-sand-100-a20: rgb(234 224 203 / 0.2);
+  --color-cream-50: #faf5ec;
+  --color-olive-600: #4d6b2e;
+  --color-brick-600: #a2362a;
+
+  /* Dashboard extensions: tones the dashboard screenshots use that the design system doesn't have */
+  --background-color-muted: #f3ece0; /* active nav item, icon tiles */
+  --background-color-track: #f1ebdf; /* tabs track, info boxes */
+  --background-color-subtle: #f6f1e8; /* group headers */
+  --border-color-card: #ece4d6;
+  --text-color-panel-body: #c9b99c; /* login dark panel */
+  --color-success-soft: #e8eedb;
+  --color-success-dot: #9dba6a;
+  --color-control: #a39179; /* input borders, switch-off track: 3:1 on white, darker than sand/400 on purpose */
+
+  /* Type: Latin font first, so Arabic glyphs fall through to the Arabic font */
+  --font-display: 'Montserrat', 'El Messiri', sans-serif;
+  --font-sans: 'DM Sans', 'IBM Plex Sans Arabic', sans-serif;
+  --text-headline: 3.125rem; /* 50px */
+  --text-headline--line-height: 1.2;
+  --text-page-title: 1.875rem; /* 30px */
+  --text-page-title--line-height: 1.2;
+  --text-title: 1.5rem; /* 24px */
+  --text-title--line-height: 1.2;
+  --text-card-title: 1.0625rem; /* 17px */
+  --text-card-title--line-height: 1.2;
+  --text-body: 1rem; /* 16px */
+  --text-body--line-height: 1.6;
+  --text-button: 0.9375rem; /* 15px */
+  --text-label: 0.875rem; /* 14px */
+  --text-meta: 0.8125rem; /* 13px */
+  --text-badge: 0.75rem; /* 12px */
+
+  --radius-*: initial;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+
+  --shadow-floating: 0 18px 40px rgb(43 29 21 / 0.18);
+  --shadow-toast: 0 14px 40px rgb(43 29 21 / 0.3);
+  --shadow-drawer: 0 0 60px rgb(43 29 21 / 0.25);
+
+  --breakpoint-*: initial;
+  --breakpoint-tablet: 760px;
+  --breakpoint-desktop: 1100px;
+
+  --animate-splash: splash-in 300ms ease-out 200ms both;
+  @keyframes splash-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/* Semantic tokens: what components use. Inline, so utilities read the primitive directly. */
+@theme inline {
+  --background-color-page: var(--color-cream-50);
+  --background-color-surface: var(--color-sand-100);
+  --background-color-card: var(--color-white);
+  --background-color-inverse: var(--color-espresso-900);
+  --background-color-scrim: var(--color-espresso-900-a45);
+  --background-color-action-primary: var(--color-espresso-900);
+  --background-color-action-primary-hover: var(--color-cocoa-700);
+  --background-color-action-brand: var(--color-cocoa-700);
+  --background-color-action-soft: var(--color-sand-100);
+
+  --text-color-primary: var(--color-espresso-900);
+  --text-color-secondary: var(--color-cocoa-600);
+  --text-color-tertiary: var(--color-cocoa-500);
+  --text-color-brand: var(--color-cocoa-700);
+  --text-color-accent: var(--color-gold-400);
+  --text-color-on-inverse: var(--color-cream-50);
+  --text-color-on-inverse-muted: var(--color-sand-300);
+  --text-color-on-surface-strong: var(--color-espresso-900);
+  --text-color-on-primary: var(--color-cream-50);
+
+  --border-color-default: var(--color-sand-400);
+  --border-color-subtle: var(--color-sand-200);
+  --border-color-strong: var(--color-espresso-900);
+  --border-color-on-inverse: var(--color-sand-100-a20);
+
+  /* Feedback works with any utility: text-error, border-error, bg-success… */
+  --color-success: var(--color-olive-600);
+  --color-error: var(--color-brick-600);
+}

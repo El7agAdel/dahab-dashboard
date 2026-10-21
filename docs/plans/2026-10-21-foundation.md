@@ -177,7 +177,7 @@ git push -u origin main
 ```
 
 **Git workflow from Task 2 on** ("main with branches", decided 2026-10-21):
-1. Cut a branch from an up-to-date `main`: `feat/<NN>-<slug>`, e.g. `feat/02-lint-rules`.
+1. Cut a branch from an up-to-date `main`, named `<type>/<one concise word>` (e.g. `feat/tokens`); no numbers, no dashes.
 2. Commit the approved work, then push.
 3. Open a PR into `main`. The user reviews it and squash-merges it (or asks for it to be merged with `gh pr merge --squash`).
 4. Pull `main` before the next task.

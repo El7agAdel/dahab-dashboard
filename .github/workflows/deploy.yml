@@ -1,0 +1,150 @@
+name: Deploy to staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Redeploy a release that is still on the server instead of building this commit (e.g. sha-abc1234)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Rehearse: upload and validate, but switch nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/var/www/dahab-dashboard' }}
+  SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+
+jobs:
+  ci:
+    if: ${{ !inputs.release }}
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build release
+    needs: ci
+    if: ${{ !inputs.release }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release: ${{ steps.meta.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Release name
+        id: meta
+        run: echo "release=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build with .env.staging
+        run: npm run build-only -- --mode staging
+
+      - name: Check that MSW is not in the build
+        run: |
+          if grep -rqE 'mockServiceWorker|setupWorker' dist; then
+            echo "::error::The mock API (MSW) is in dist/. It must only run on the dev server."
+            exit 1
+          fi
+
+      - name: Package
+        run: tar -C dist -czf "${{ steps.meta.outputs.release }}.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.release }}
+          path: ${{ steps.meta.outputs.release }}.tar.gz
+          if-no-files-found: error
+          # Only the deploy job below (or a re-run of it) needs it; the server keeps its own copies
+          retention-days: 7
+
+  deploy:
+    name: Deploy
+    needs: build
+    # Runs after a successful build, or straight away when redeploying a release already on the server
+    if: ${{ always() && (needs.build.result == 'success' || (inputs.release != '' && needs.build.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    env:
+      RELEASE: ${{ inputs.release || needs.build.outputs.release }}
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+      STAGING_URL: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the release name
+        run: |
+          # It ends up in a path and a remote command line
+          if [[ ! "$RELEASE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::Invalid release name: '$RELEASE' (expected e.g. sha-abc1234)"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.release }}
+        with:
+          name: ${{ env.RELEASE }}
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host deploy-target
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Upload release and deploy script
+        run: |
+          ssh deploy-target "mkdir -p '$DEPLOY_DIR/incoming'"
+          if [[ -f "$RELEASE.tar.gz" ]]; then
+            scp -q "$RELEASE.tar.gz" "deploy-target:$DEPLOY_DIR/incoming/"
+          fi
+          scp -q scripts/deploy.sh "deploy-target:$DEPLOY_DIR/deploy.sh"
+          ssh deploy-target "chmod +x '$DEPLOY_DIR/deploy.sh'"
+
+      - name: Deploy ${{ env.RELEASE }}
+        run: |
+          ssh deploy-target "DEPLOY_DIR='$DEPLOY_DIR' DRY_RUN='$DRY_RUN' HEALTH_URL='$STAGING_URL' '$DEPLOY_DIR/deploy.sh' '$RELEASE'"
+
+      - name: Check the public URL
+        if: ${{ env.STAGING_URL != '' && env.DRY_RUN != 'true' }}
+        run: |
+          url="${STAGING_URL%/}/"
+          # A fresh build must be served byte for byte; a redeploy was already compared on the server
+          if [[ -f "$RELEASE.tar.gz" ]]; then
+            tar -xzOf "$RELEASE.tar.gz" ./index.html > expected.html
+          fi
+
+          for _ in $(seq 1 10); do
+            if curl -fsS --max-time 10 -o served.html "$url" &&
+              { [[ ! -f expected.html ]] || cmp -s served.html expected.html; }; then
+              echo "Serving $RELEASE: $url"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::$url is not serving $RELEASE from outside the server (firewall?)"
+          exit 1

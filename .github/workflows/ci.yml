@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Distinct from the deploy workflow's group: a called workflow sharing its
+  # caller's group would cancel itself.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    name: Lint, format, types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run lint:check
+      - run: npm run format:check
+      - run: npm run type-check
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run test:unit -- --run
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run build-only
+      - name: Check that MSW is not in the build
+        run: |
+          if grep -rqE 'mockServiceWorker|setupWorker' dist; then
+            echo "::error::The mock API (MSW) is in dist/. It must only run on the dev server."
+            exit 1
+          fi
+
+  audit:
+    name: Audit production dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # npm audit reads the lockfile, so no install
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm run audit:prod

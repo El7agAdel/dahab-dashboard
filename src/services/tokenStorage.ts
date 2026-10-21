@@ -39,6 +39,7 @@ export const tokenStorage = {
   getRefreshToken(now = Date.now()): string | null {
     const session = read()
     if (!session) return null
+    lastKeepSignedIn = session.keepSignedIn // a session restored after a reload keeps its mode
     const expired = session.keepSignedIn
       ? now - session.signedInAt > KEEP_LIMIT_MS
       : now - session.lastActiveAt > IDLE_LIMIT_MS

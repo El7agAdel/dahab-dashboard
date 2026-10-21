@@ -71,6 +71,17 @@ it('remembers the last mode after clear', () => {
   expect(tokenStorage.isKeepSignedIn()).toBe(true)
 })
 
+it('remembers Keep me signed in for a session restored after a reload', () => {
+  tokenStorage.start(tokens, false) // this tab's memory says "not kept"…
+  tokenStorage.clear()
+  const stored = { refreshToken: 'refresh-1', keepSignedIn: true, signedInAt: 0, lastActiveAt: 0 }
+  localStorage.setItem('dahab.session', JSON.stringify(stored)) // …but the reloaded session is kept
+
+  expect(tokenStorage.getRefreshToken(0)).toBe('refresh-1')
+  tokenStorage.clear()
+  expect(tokenStorage.isKeepSignedIn()).toBe(true)
+})
+
 it('treats corrupted storage as signed out', () => {
   localStorage.setItem('dahab.session', '{not json')
   expect(tokenStorage.getRefreshToken()).toBeNull()

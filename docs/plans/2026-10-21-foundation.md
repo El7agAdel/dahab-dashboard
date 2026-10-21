@@ -8,9 +8,9 @@
 - the app frame in Arabic and English;
 - CI.
 
-**Architecture:** A create-vue scaffold, organised by file type with feature subfolders (spec 3.1). Data flows view → component → composable → service → `http.ts`. Lint enforces the layers and keeps each library inside one folder. Server data lives in TanStack Query; Pinia holds only the locale. MSW serves the mock API in development and in tests.
+**Architecture:** A create-vue scaffold, organised by file type with feature subfolders (spec 3.1). Data flows view → component → composable → service → `http.ts`. Lint enforces the layers and keeps each library inside one folder. Server data is loaded by hand in composables; Pinia holds the locale and the signed-in user. API types are written by hand. MSW serves the mock API in development and in tests.
 
-**Tech Stack:** Vue 3.5 · Vite 8 · TypeScript · Tailwind CSS 4.3 · Reka UI 2 · `@lucide/vue` · Vue Router 5 · TanStack Vue Query 5 · Pinia · axios · VeeValidate 4.15 + Zod 3 · vue-i18n 11 · VueUse · MSW 3 · Vitest + Testing Library · Playwright · Sentry.
+**Tech Stack:** Vue 3.5 · Vite 8 · TypeScript · Tailwind CSS 4.3 · Reka UI 2 · `@lucide/vue` · Vue Router 5 · Pinia · axios · VeeValidate 4.15 + Zod 3 · vue-i18n 11 · VueUse · MSW 3 · Vitest + Testing Library · Playwright · Sentry.
 
 **Spec:** `docs/specs/2026-10-20-dashboard-phase-1-design.md`
 
@@ -29,7 +29,6 @@
   - tailwindcss and @tailwindcss/vite ^4.3
   - reka-ui ^2.11
   - @lucide/vue ^1.60
-  - @tanstack/vue-query ^5
   - axios ^1.20
   - vee-validate 4.15.1 and @vee-validate/zod 4.15.1
   - **zod ^3.25 (not 4)**
@@ -37,7 +36,7 @@
   - @vueuse/core ^15
   - msw ^3.0
   - @sentry/vue ^11
-  - openapi-typescript ^7
+  - No TanStack Query and no openapi-typescript (user decisions, 2026-10-21): data loading and API types are written by hand.
 - **Formatting.** Prettier `semi: false`, `singleQuote: true`, `printWidth: 100`, trailing commas (the Prettier default). LF line endings. Every file ends with a newline.
 - **Layers.** Lint enforces the layer table (spec 3.2) and the containment rule (spec 2) from Task 2 on. Additions to the table:
   - `config/` and `constants/` may be imported from any layer;
@@ -67,8 +66,8 @@
 | D5 | `VITE_STOREFRONT_URL` is optional; "Open store" and "Back to the store" are hidden when it isn't set | The storefront URL isn't known yet, and we shouldn't invent one. |
 | D6 | Semantic colours use Tailwind's per-utility namespaces (`--background-color-*`, `--text-color-*`, `--border-color-*`), so classes read `bg-page`, `text-primary`, `border-default` | Checked against Tailwind 4.3.3 on 2026-10-21. Avoids `bg-bg-page`. |
 | D7 | Fonts load from Fontsource weight files, which include every subset, each with its own `unicode-range`. Font stacks list the Latin font first. | Arabic files download only when Arabic text appears; Latin glyphs always use Montserrat or DM Sans (spec 6.2). Fraunces and Aref Ruqaa arrive with Banners (Plan 5). |
-| D8 | No `plugins/pinia.ts` or `plugins/i18n.ts` | They would only re-export. `plugins/` keeps vue-query, msw and sentry. |
-| D9 | The query client lives in `composables/queryClient.ts`; `plugins/vue-query.ts` only installs it | Composables never import plugins, so spec table 3.2 stays as written. |
+| D8 | No `plugins/pinia.ts` or `plugins/i18n.ts` | They would only re-export. `plugins/` keeps msw and sentry. |
+| D9 | The signed-in user lives in a Pinia store (`stores/session.ts`, state only). Components read it directly; composables do the fetching. | The only server data the whole app shares (spec 3.4). |
 | D10 | The kit grows with its consumers. Plan 1 builds the base components its own screens use, plus two that aren't in spec 6.4: **BaseProvider** (wraps Reka's ConfigProvider and ToastProvider so `App.vue` doesn't import Reka) and **BaseDialog** (the session-expired dialog is a form; BaseConfirmDialog isn't). BaseDrawer starts with the mobile-navigation variant only. | Avoids building components before anything uses them. |
 | D11 | Greeting hours: morning 05:00–11:59 · afternoon 12:00–16:59 · evening 17:00–04:59 | The spec gives the copy but not the hours. |
 | D12 | "Keep me signed in": 30 days **from sign-in**. Without it: 12 h since the last API request. | The spec doesn't say what the 30 days are counted from. |
@@ -82,7 +81,7 @@
 | D20 | The "Store is live" dot from the login design is left out | No data source. |
 | D21 | Sentry source-map upload moves to the deployment plan | It needs a CI secret and the host, both decided later. |
 | D22 | A toast with the same text as one already showing isn't added again | Repeated 403s would otherwise stack "Your access has changed". |
-| D23 | axios timeout 30 s; queries retry up to 2× only on network/5xx; mutations never retry; `staleTime` 30 s (`/me`: 0 so it reloads on focus) | The spec has no numbers for these. |
+| D23 | axios timeout 30 s; nothing retries automatically (a failed load shows Retry) | The spec has no number for the timeout; no data library means no automatic retries. |
 
 ## Review Focus
 
@@ -99,7 +98,7 @@
 ```
 dahab-dashboard/
 ├─ .github/workflows/ci.yml · .github/dependabot.yml
-├─ .env.development · .env.test · .npmrc · .size-limit.json · .prettierignore
+├─ .env.development · .env.test · .npmrc · .size-limit.json
 ├─ docs/ (existing) + design/screenshots/ + planning record, backend docs (moved in)
 ├─ e2e/ auth.spec.ts · frame.spec.ts · fixtures.ts
 ├─ index.html (splash) · vite.config.ts · vitest.config.ts · playwright.config.ts · eslint.config.ts
@@ -114,19 +113,19 @@ dahab-dashboard/
    │  │        AuthResetRequestStep · AuthResetCodeStep · AuthResetPasswordStep · AuthSessionExpiredDialog
    │  └─ layout/ LayoutDashboard · LayoutSidebar · LayoutSidebarFooter · LayoutMobileNav · LayoutPageHeader
    │             LayoutOfflineBanner · LayoutToasts
-   ├─ composables/ queryClient.ts · queryKeys.ts
-   │  ├─ auth/ useCurrentUser · useCan · useSession · useSessionExpiredDialog · useAccessGuard
+   ├─ composables/
+   │  ├─ auth/ useCan · useSession · useSessionExpiredDialog · useAccessGuard
    │  │        useSignInErrorMessage · usePasswordReset
    │  └─ common/ useToast · useApiErrorMessage · useDocumentLocale
    ├─ config/env.ts · constants/{navigation.ts,injectionKeys.ts}
    ├─ i18n/ index.ts · locales/{en.json,ar.json}
    ├─ mocks/ db.ts · respond.ts · server.ts · browser.ts · fixtures/users.ts · handlers/{index.ts,auth.handlers.ts}
-   ├─ plugins/ vue-query.ts · msw.ts · sentry.ts
+   ├─ plugins/ msw.ts · sentry.ts
    ├─ router/ index.ts · guards.ts · routes/{auth.ts,app.ts,dev.ts}
    ├─ schemas/ common.schema.ts · auth.schema.ts
    ├─ services/ http.ts · errors.ts · tokenStorage.ts · auth.service.ts
-   ├─ stores/ locale.ts
-   ├─ types/ api.d.ts (generated) · http.ts · auth.ts · locale.ts · icons.ts · router.d.ts
+   ├─ stores/ locale.ts · session.ts
+   ├─ types/ http.ts · auth.ts · locale.ts · icons.ts · router.d.ts
    ├─ utils/ locale.ts · dates.ts · device.ts · person.ts
    └─ views/ auth/{LoginView,ForgotPasswordView}.vue · WelcomeView.vue · NotFoundView.vue · dev/KitView.vue
 ```
@@ -191,8 +190,8 @@ CI and deployment stay parked until the hosting answers come in (planning record
 
 **Files:**
 - Modify: `eslint.config.ts`
-- Modify: `package.json` (scripts `lint:check`, `lint:launch`)
-- Create: `.prettierignore` (`src/types/api.d.ts`)
+- Modify: `package.json` (scripts `lint`, `lint:check`, `lint:launch`)
+- Modify: `package.json` (remove `@tanstack/vue-query`)
 
 **Interfaces:**
 - Consumes the Task 1 scaffold.
@@ -203,9 +202,9 @@ CI and deployment stay parked until the hosting answers come in (planning record
 - [ ] **Step 1: Switch the base configs.**
   - Replace `pluginVue.configs['flat/essential']` with `['flat/recommended']`.
   - Replace `vueTsConfigs.recommended` with `vueTsConfigs.recommendedTypeChecked` (spec 7.1: type-aware).
-  - Add `src/types/api.d.ts`, `playwright-report/**` and `test-results/**` to `globalIgnores`.
+  - Add `playwright-report/**` and `test-results/**` to `globalIgnores`.
 - [ ] **Step 2: Imports.**
-  - Configs: `importX.flatConfigs.recommended` and `importX.flatConfigs.typescript`, with `settings['import-x/resolver-next'] = [createTypeScriptImportResolver()]`.
+  - Register the `import-x` plugin with `settings['import-x/resolver-next'] = [createTypeScriptImportResolver()]` and no preset. The presets mostly repeat what TypeScript already checks and break on `.vue` files.
   - `import-x/no-cycle: 'error'`.
   - `import-x/no-extraneous-dependencies: ['error', { devDependencies: ['**/__tests__/**', 'e2e/**', 'src/mocks/**', '*.config.ts'] }]`.
   - `simple-import-sort/imports` and `simple-import-sort/exports`: `'error'`.
@@ -230,7 +229,6 @@ const libraryOwners: Record<string, string[]> = {
   axios: ['src/services/http.ts'],
   'reka-ui': ['src/components/base/**'],
   '@lucide/vue': ['src/components/base/**'],
-  '@tanstack/vue-query': ['src/composables/**', 'src/plugins/**', 'src/**/__tests__/**'],
   msw: ['src/mocks/**', 'src/**/__tests__/**'],
   '@sentry/vue': ['src/plugins/sentry.ts'],
 }
@@ -254,6 +252,7 @@ const pureFolders = ['src/schemas/**', 'src/types/**', 'src/utils/**'] // also m
     - `'/^(?:.+:)?scroll-[mp][lr]-/'`
   - `no-warning-comments: [isLaunchCheck ? 'error' : 'warn', { terms: ['MOCK:'], location: 'anywhere' }]`, where `const isLaunchCheck = process.env.npm_lifecycle_event === 'lint:launch'`. npm sets that variable to the running script's name, so this works the same on Windows, macOS and CI.
 - [ ] **Step 6: Scripts.**
+  - `"lint": "run-s lint:oxlint lint:eslint"`. The scaffold's `run-s "lint:*"` would also run `lint:launch`.
   - `"lint:check": "oxlint . && eslint ."`
   - `"lint:launch": "oxlint . && eslint ."`
   - The two commands are identical. `lint:launch` turns `MOCK:` into an error only because of its script name (Step 5).
@@ -597,10 +596,8 @@ it('remembers the last mode after clear', () => {
   - `src/services/http.ts`
   - `src/mocks/server.ts`, `src/mocks/respond.ts`, `src/mocks/handlers/index.ts`
   - `src/__tests__/setup.ts`
-  - `src/types/api.d.ts` (generated)
 - Modify:
   - `vitest.config.ts`: `setupFiles: ['./src/__tests__/setup.ts']`
-  - `package.json`: script `"api:types": "openapi-typescript http://167.71.141.187/api/docs-json -o src/types/api.d.ts"`
 - Test: `src/services/__tests__/http.spec.ts`
 
 **Interfaces:**
@@ -637,9 +634,6 @@ it('remembers the last mode after clear', () => {
   - after each test: `server.resetHandlers()`, `localStorage.clear()`, `sessionStorage.clear()`, `tokenStorage.clear()`;
   - after all tests: `server.close()`.
 
-- [ ] **Step 1: Generate the API types.**
-  - Run: `npm run api:types`
-  - Expected: `src/types/api.d.ts` contains `ProfileDto`, `LoginResponseDto` and `TokensDto`.
 - [ ] **Step 2: Write the failing tests.** Handlers are declared inline with `server.use(...)`.
 
 ```ts
@@ -724,15 +718,14 @@ it('a retried request that 401s again does not refresh twice', async () => {
 - Test: `src/services/__tests__/auth.service.spec.ts`, `src/mocks/__tests__/auth.handlers.spec.ts`
 
 **Interfaces:**
-- Consumes: `api`, `ApiError`, `CLIENT_ERROR_CODES`, `apiPath`, `ok`, `fail` (Tasks 5–6); `components['schemas']` from `types/api.d.ts`.
-- Produces (`types/auth.ts`):
-  - `Profile = components['schemas']['ProfileDto']`
-  - `AuthUser = components['schemas']['AuthUserDto']`
+- Consumes: `api`, `ApiError`, `CLIENT_ERROR_CODES`, `apiPath`, `ok`, `fail` (Tasks 5–6).
+- Produces (`types/auth.ts`). These are written by hand from `docs/backend-api-reference.md` and cover only the fields the dashboard reads:
+  - `Profile` (mirrors `ProfileDto`): `id`, `username`, `email`, `phone`, `displayName`, `firstName?`, `lastName?`, `avatar?`, `language`, `status: 'ACTIVE' | 'SUSPENDED' | 'PENDING_DELETION' | 'DELETED'`, `roles: string[]`, `permissions: string[]`.
   - `OtpChannel = 'EMAIL' | 'WHATSAPP'`
   - `PasswordResetChallenge = { target: string; channel: OtpChannel; expiresIn: number; transactionalToken: string }`
   - `DemoCredentials = { identifier: string; password: string }`
 - Produces (`services/auth.service.ts`), `authService` with:
-  - `login(input: { identifier: string; password: string; deviceName: string }): Promise<SessionTokens & { user: AuthUser }>`. Sends `deviceType: 'web'`. Throws `ApiError(code: TWO_FACTOR_UNSUPPORTED)` when `twoFactorRequired` is true (D15).
+  - `login(input: { identifier: string; password: string; deviceName: string }): Promise<SessionTokens>`. Sends `deviceType: 'web'`. The session reads the user from `/me` afterwards. Throws `ApiError(code: TWO_FACTOR_UNSUPPORTED)` when `twoFactorRequired` is true (D15).
   - `logout(refreshToken: string): Promise<void>`
   - `getMe(): Promise<Profile>`
   - `requestPasswordReset(input: { identifier: string; channel: OtpChannel }): Promise<PasswordResetChallenge>`
@@ -764,7 +757,7 @@ it('a retried request that 401s again does not refresh twice', async () => {
 // auth.service.spec.ts
 it('logs in the demo admin', async () => {
   const result = await authService.login({ identifier: demoAdmin.email, password: demoAdmin.password, deviceName: 'Chrome on Windows' })
-  expect(result.user.id).toBe(demoAdmin.id); expect(result.accessToken).toBeTruthy()
+  expect(result.accessToken).toBeTruthy(); expect(result.refreshToken).toBeTruthy()
 })
 it('wrong details → 401 AUTH_INVALID_CREDENTIALS', async () => {
   await expect(authService.login({ identifier: demoAdmin.email, password: 'nope', deviceName: 'x' }))
@@ -814,48 +807,47 @@ it('a refresh token works once (rotation)', async () => {
 
 **Files:**
 - Create:
-  - `src/composables/queryClient.ts`, `src/composables/queryKeys.ts`
-  - `src/plugins/vue-query.ts`
-  - `src/composables/auth/useCurrentUser.ts`, `useCan.ts`, `useSession.ts`, `useSessionExpiredDialog.ts`, `useAccessGuard.ts`
+  - `src/stores/session.ts`
+  - `src/composables/auth/useCan.ts`, `useSession.ts`, `useSessionExpiredDialog.ts`, `useAccessGuard.ts`
   - `src/types/router.d.ts`
   - `src/__tests__/helpers.ts`
 - Modify: `src/__tests__/setup.ts`:
   - before each test: `setActivePinia(createPinia())`;
-  - after each test: `queryClient.clear()`, `i18n.global.locale.value = 'en'`, `document.documentElement.dir = 'ltr'`.
+  - after each test: `i18n.global.locale.value = 'en'`, `document.documentElement.dir = 'ltr'`.
 - Test: `src/composables/auth/__tests__/useCan.spec.ts`, `useSession.spec.ts`, `useAccessGuard.spec.ts`
 
 **Interfaces:**
 - Consumes: `authService`, `tokenStorage`, `refreshSession`, `useLocaleStore`, `describeDevice`, fixtures.
-- Query client and keys:
-  - `queryClient: QueryClient` (D23 defaults).
-  - `queryKeys = { me: ['me'] as const }`. Later plans add their own keys here.
-  - `installVueQuery(app: App): void`.
+- Session store (`stores/session.ts`, Pinia setup store, state only, D9): `useSessionStore()` with:
+  - `user: Ref<Profile | null>`
+  - `permissions: ComputedRef<readonly string[]>`
+  - `setUser(user: Profile): void`
+  - `clear(): void`
 - Route meta (`types/router.d.ts`): `RouteMeta { public?: boolean; access?: 'team' }`.
-- Current user (`useCurrentUser.ts`):
-  - `useCurrentUser(): { user: ComputedRef<Profile | undefined>; permissions: ComputedRef<readonly string[]> }`. A `useQuery` with `staleTime: 0`, so `/me` reloads on focus (spec 4.2 flow 6).
-  - `getCurrentUser(): Profile | undefined`. Reads the cache only.
 - Permissions (`useCan.ts`):
   - `TEAM_PERMISSIONS = ['user:read', 'role:read'] as const` (D16).
   - `hasPermission(permissions: readonly string[], key: string): boolean`.
   - `canManageTeam(permissions: readonly string[]): boolean`.
   - `useCan(): { can: (key: string) => boolean; canManageTeam: ComputedRef<boolean> }`. Only `canManageTeam` is used in phase 1 (M7).
 - Session (`useSession.ts`):
-  - `restoreSession(): Promise<boolean>`. Steps: refresh, then `fetchQuery(me)`, then `applyAccountLocale(me.id)`. Returns false when there's no session or it can't be reached; tokens stay as `refreshSession` left them.
+  - `restoreSession(): Promise<boolean>`. Steps: refresh, then `getMe()` into the store, then `applyAccountLocale(me.id)`. Returns false when there's no session or it can't be reached; tokens stay as `refreshSession` left them.
   - `useSession()` returns three functions:
-    - `signIn(input: { identifier: string; password: string; keepSignedIn: boolean }): Promise<void>`. Logs in, calls `tokenStorage.start`, puts `/me` in the cache, then calls `applyAccountLocale`.
-    - `resume(password: string): Promise<void>`. Signs in again as the cached user's email with `tokenStorage.isKeepSignedIn()`. Then closes the expired dialog and runs `queryClient.invalidateQueries()`.
-    - `signOut(): Promise<void>`. Calls `logout` (failures ignored), then `tokenStorage.clear()`, `queryClient.clear()`, `resetToLoginLocale()` and `router.replace({ name: 'login' })`.
+    - `signIn(input: { identifier: string; password: string; keepSignedIn: boolean }): Promise<void>`. Logs in, calls `tokenStorage.start`, loads `/me` into the store, then calls `applyAccountLocale`.
+    - `resume(password: string): Promise<void>`. Signs in again as the stored user's email with `tokenStorage.isKeepSignedIn()`, reloads `/me`, then closes the expired dialog. The page's own data stays as it is; the member presses Save or Retry again (spec 4.2 flow 5).
+    - `signOut(): Promise<void>`. Calls `logout` (failures ignored), then `tokenStorage.clear()`, `useSessionStore().clear()`, `resetToLoginLocale()` and `router.replace({ name: 'login' })`.
 - Expired dialog state (`useSessionExpiredDialog.ts`): `useSessionExpiredDialog = createGlobalState(() => ({ isOpen: Ref<boolean>, open(): void, close(): void }))`.
 - Access guard (`useAccessGuard.ts`):
-  - `useAccessGuard(): void`. Watches `canManageTeam`; when it's false and `route.meta.access === 'team'`, calls `router.replace({ name: 'welcome' })`.
-  - `reloadAccess(): Promise<void>`. Invalidates `queryKeys.me`.
+  - `useAccessGuard(): void`. Called once by the layout. It does two things:
+    - reloads `/me` whenever the window regains focus (VueUse `useEventListener(window, 'focus', …)`, spec 4.2 flow 6);
+    - watches `canManageTeam`; when it's false and `route.meta.access === 'team'`, calls `router.replace({ name: 'welcome' })`.
+  - `reloadAccess(): Promise<void>`. `getMe()` into the store. A network failure is ignored (the next focus tries again); a 401 goes through `http.ts` as usual.
 - Test helpers (`src/__tests__/helpers.ts`):
   - `renderWithApp(component, options?: { props?; slots?; routes?: RouteRecordRaw[]; path?: string; provide?: Record<symbol, unknown> }): Promise<RenderResult & { router: Router; user: UserEvent }>`.
-    - Installs the active Pinia (the one the test setup created), `i18n`, the vue-query plugin with `queryClient`, and a memory-history router.
+    - Installs the active Pinia (the one the test setup created), `i18n` and a memory-history router.
     - The router always includes empty stub routes named `login` (`/login`), `forgot-password` (`/forgot-password`), `welcome` (`/`) and `not-found` (catch-all), plus `options.routes`.
     - It awaits `router.isReady()` before returning.
   - `runInApp<T>(composable: () => T, options?: same as renderWithApp): Promise<{ result: T; router: Router }>`. Mounts an empty component that runs the composable in `setup`.
-  - `signInAs(user: MockUser, keepSignedIn = false): Promise<void>`. Logs in through `authService` and seeds the cache.
+  - `signInAs(user: MockUser, keepSignedIn = false): Promise<void>`. Logs in through `authService` and puts the user in the session store.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -871,11 +863,11 @@ it('useCan follows /me', async () => {
 
 // useSession.spec.ts
 it('restoreSession signs back in from a stored refresh token', async () => {
-  await signInAs(demoAdmin, true); queryClient.clear()
-  expect(await restoreSession()).toBe(true); expect(getCurrentUser()?.id).toBe(demoAdmin.id)
+  await signInAs(demoAdmin, true); useSessionStore().clear()
+  expect(await restoreSession()).toBe(true); expect(useSessionStore().user?.id).toBe(demoAdmin.id)
 })
 it('restoreSession applies Arabic for a new account', async () => {
-  await signInAs(demoAdmin, true); queryClient.clear(); await restoreSession()
+  await signInAs(demoAdmin, true); useSessionStore().clear(); await restoreSession()
   expect(useLocaleStore().locale).toBe('ar')
 })
 it('restoreSession returns false with nothing stored', async () => expect(await restoreSession()).toBe(false))
@@ -888,10 +880,10 @@ it('signIn with Keep me signed in stores in localStorage', async () => {
   await result.signIn({ identifier: demoAdmin.email, password: demoAdmin.password, keepSignedIn: true })
   expect(localStorage.getItem('dahab.session')).not.toBeNull()
 })
-it('signOut wipes tokens, cache and locale even if logout fails', async () => {
+it('signOut wipes tokens, the user and locale even if logout fails', async () => {
   await signInAs(demoAdmin); server.use(http.post(apiPath('/auth/logout'), () => HttpResponse.error()))
   const { result, router } = await runInApp(() => useSession()); await result.signOut()
-  expect(tokenStorage.getRefreshToken()).toBeNull(); expect(getCurrentUser()).toBeUndefined()
+  expect(tokenStorage.getRefreshToken()).toBeNull(); expect(useSessionStore().user).toBeNull()
   expect(useLocaleStore().locale).toBe('en'); expect(router.currentRoute.value.name).toBe('login')
 })
 
@@ -900,8 +892,14 @@ it('useAccessGuard leaves a team route when permission is lost', async () => {
   await signInAs(demoAdmin)
   const { router } = await runInApp(() => useAccessGuard(), {
     routes: [{ path: '/team', name: 'team', component: { render: () => null }, meta: { access: 'team' } }], path: '/team' })
-  queryClient.setQueryData(queryKeys.me, { ...getCurrentUser()!, permissions: [] }); await flushPromises()
+  const store = useSessionStore(); store.setUser({ ...store.user!, permissions: [] }); await flushPromises()
   expect(router.currentRoute.value.name).toBe('welcome')
+})
+it('reloads /me when the window regains focus', async () => {
+  await signInAs(demoAdmin); await runInApp(() => useAccessGuard())
+  server.use(http.get(apiPath('/me'), () => ok({ ...demoAdmin, permissions: [] })))
+  window.dispatchEvent(new Event('focus')); await flushPromises()
+  expect(useSessionStore().permissions).toEqual([])
 })
 ```
 
@@ -1287,7 +1285,7 @@ it('shows demo credentials only when provided', async () => { /* render with and
   - `AuthForgotPasswordFlow`: switches between the three steps on `step`.
   - Step 1's helper text always reads "If an account exists, we'll send a code".
 - **`AuthSessionExpiredDialog`**: `BaseDialog` (`dismissible: false`), opened by `useSessionExpiredDialog().isOpen`.
-  - Body: `AuthSignInForm` with `lockedIdentifier = useCurrentUser().user.email` and `showKeepSignedIn = false`. Submitting calls `useSession().resume(password)`.
+  - Body: `AuthSignInForm` with `lockedIdentifier = useSessionStore().user.email` and `showKeepSignedIn = false`. Submitting calls `useSession().resume(password)`.
   - Actions: "Not you? Sign out" → `signOut()`.
   - It's mounted in `LayoutDashboard` (Task 14), so the page underneath never unmounts.
 
@@ -1389,12 +1387,12 @@ it('completes the three steps', async () => { /* type email, pick Email, continu
 - **`NotFoundView`**: "This page doesn't exist" and a `BaseButton` back to `welcome`.
 - **`App.vue`**: `BaseProvider :dir="store.dir"`, `<RouterView />`, `LayoutToasts`, `useDocumentLocale()`.
 - **`main.ts`**, in order:
-  1. `createApp(App)`; `app.use(createPinia())`, `app.use(i18n)`, `installVueQuery(app)`.
+  1. `createApp(App)`; `app.use(createPinia())`, `app.use(i18n)`.
   2. If `import.meta.env.DEV && env.apiMocking`: `app.provide(demoCredentialsKey, await (await import('./plugins/msw')).startMockApi())` (`// MOCK: M3, M4`).
-  3. `onUnauthorized(() => { if (getCurrentUser()) useSessionExpiredDialog().open() })`.
+  3. `onUnauthorized(() => { if (useSessionStore().user) useSessionExpiredDialog().open() })`.
   4. `onForbidden(() => { void reloadAccess(); useToast().show({ message: i18n.global.t('auth.accessChanged') }) })`.
   5. `await restoreSession()`.
-  6. `installGuards(router, { isSignedIn: () => getCurrentUser() !== undefined, canManageTeam: () => canManageTeam(getCurrentUser()?.permissions ?? []) })`.
+  6. `installGuards(router, { isSignedIn: () => useSessionStore().user !== null, canManageTeam: () => canManageTeam(useSessionStore().permissions) })`.
   7. `app.use(router)`; `app.config.errorHandler = () => useToast().show({ tone: 'error', message: i18n.global.t('errors.unexpected') })`.
   8. `await router.isReady()`; `app.mount('#app')`.
 
@@ -1618,7 +1616,7 @@ test('unknown URL shows the 404 inside the layout', async ({ page }) => { /* /no
 **Interfaces:**
 - **`plugins/sentry.ts`:**
   - `startMonitoring(app: App, router: Router): Promise<void>`. Does nothing unless `env.appEnv !== 'local'` and `env.sentryDsn` is set. Otherwise it `import('@sentry/vue')` lazily and calls `init({ app, dsn, environment: env.appEnv, sendDefaultPii: false, beforeSend: scrubEvent })` with Vue Router instrumentation.
-  - `scrubEvent(event: ErrorEvent): ErrorEvent`. Removes `request.headers`, `request.cookies`, `request.data` and `request.query_string`. Replaces `user` with `{ id: getCurrentUser()?.id }`. Drops breadcrumb `data` from XHR/fetch breadcrumbs.
+  - `scrubEvent(event: ErrorEvent): ErrorEvent`. Removes `request.headers`, `request.cookies`, `request.data` and `request.query_string`. Replaces `user` with `{ id: useSessionStore().user?.id }`. Drops breadcrumb `data` from XHR/fetch breadcrumbs.
 - **Size budget** (spec 7.4), using `@size-limit/file` and gzip:
   - "Login route JS" ≤ 170 KB: `["dist/assets/*.js", "!dist/assets/WelcomeView-*.js", "!dist/assets/ForgotPasswordView-*.js", "!dist/assets/NotFoundView-*.js"]`. Every later page adds its own negation.
   - "CSS" ≤ 25 KB: `dist/assets/*.css`.
@@ -1670,7 +1668,7 @@ it('scrubs tokens and personal data, keeps the member ID', async () => {
   - `npx playwright install`
   - `npx simple-git-hooks`
   - `.env.local` for overrides
-  - `npm run api:types` after backend changes
+  - check `types/` against a fresh `/api/docs-json` after backend changes
   - `npm run lint:launch` before launch
 - [ ] **Step 7: Run the pipeline locally in CI order.** Every step passes. Check that `grep -rE "mockServiceWorker|setupWorker" dist` prints nothing.
 - [ ] **Step 8: Commit.** `git commit -m "ci: pipeline, size budget, pre-commit hook and Sentry"`

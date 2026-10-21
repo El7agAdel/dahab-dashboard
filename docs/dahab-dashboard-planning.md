@@ -753,3 +753,9 @@ All 78 routes read from `/api/docs-json` (the Swagger page shows the same docume
     - private GitHub repo `omenway/dahab-dashboard` (created 2026-10-21); scaffold commit on `main`, then one branch + PR per task, squash-merged into `main`;
     - no CI, branch protection or deploy set-up (Task 17 does only its local parts).
   - Commit norms the user asked to follow: atomic commits, Conventional Commits, ≤ ~400 changed lines per review unit (excluding generated files).
+- **Stack simplified (user decisions, 2026-10-21):**
+  - No TanStack Query. Each screen's composable loads its own data in refs. The signed-in user lives in a Pinia store (`stores/session.ts`). There are no automatic retries; failed loads show Retry.
+  - No openapi-typescript. API types are written by hand in `types/<feature>.ts`, each naming the backend schema it mirrors.
+  - The `contract/` folder is dropped.
+  - `npm audit`: dev-only findings are accepted; production must stay at 0.
+  - Spec sections 2, 3.1, 3.2, 3.4, 4.2 and 8 and registry row M10 are updated to match.

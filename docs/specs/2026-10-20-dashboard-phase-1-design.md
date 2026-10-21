@@ -40,10 +40,10 @@ Visual adjustments are expected once the site runs; this spec fixes structure an
 | Accessible behaviour | Reka UI |
 | Icons | Lucide (`@lucide/vue`) |
 | Routing | Vue Router 5 (routes defined per feature, not file-based) |
-| Server data | TanStack Vue Query v5 |
-| Browser-only state | Pinia |
+| Server data | By hand in composables, no data-fetching library (decided 2026-10-21) |
+| Shared state | Pinia: the locale and the signed-in user |
 | HTTP | axios |
-| API types | openapi-typescript (generated from the backend spec) |
+| API types | Written by hand in `types/` from the backend reference (decided 2026-10-21) |
 | Forms / validation | VeeValidate 4.15 · Zod 3 · `@vee-validate/zod` (decided 2026-10-21: VeeValidate 5 is still beta; move to v5 + Zod 4 once it's stable) |
 | Translation | vue-i18n · dates and numbers via `Intl` |
 | Utilities | VueUse |
@@ -52,7 +52,7 @@ Visual adjustments are expected once the site runs; this spec fixes structure an
 | Lint / format | ESLint (flat config) + Prettier + prettier-plugin-tailwindcss |
 | Error monitoring | Sentry (free tier) |
 
-**Containment rule:** each library is imported in one place only — Reka UI and Lucide in `components/base`, axios in `services/http.ts`, TanStack Query in `composables` (and `plugins` for set-up), MSW in `mocks`.
+**Containment rule:** each library is imported in one place only — Reka UI and Lucide in `components/base`, axios in `services/http.ts`, MSW in `mocks`, Sentry in `plugins/sentry.ts`.
 
 ---
 
@@ -64,7 +64,6 @@ Organised by file type, with a feature subfolder inside each type folder.
 
 ```
 dahab-dashboard/
-├─ contract/            # OpenAPI draft for categories, items, banners until the backend builds them
 ├─ docs/                # this spec, the implementation plan
 ├─ e2e/                 # Playwright
 ├─ public/              # static files, MSW worker
@@ -85,16 +84,15 @@ dahab-dashboard/
    │  ├─ layout/        # LayoutDashboard, LayoutSidebar, LayoutSidebarFooter, LayoutMobileNav, LayoutPageHeader
    │  └─ auth/ · items/ · categories/ · banners/ · team/
    ├─ composables/
-   │  ├─ queryKeys.ts   # every feature's cache keys
    │  ├─ auth/ · items/ · categories/ · banners/ · team/
    │  └─ common/
    ├─ services/         # http.ts, errors.ts, <feature>.service.ts
-   ├─ stores/           # Pinia: locale.ts
+   ├─ stores/           # Pinia: locale.ts, session.ts (the signed-in user)
    ├─ schemas/          # Zod: common.schema.ts + one per feature
-   ├─ types/            # api.d.ts (generated) + one per feature
+   ├─ types/            # one per feature, written from the backend reference
    ├─ router/           # index.ts, guards.ts, routes/<feature>.ts, routes/dev.ts (dev only)
    ├─ i18n/             # setup + locales/ar.json, en.json
-   ├─ plugins/          # pinia, vue-query, i18n, msw, sentry
+   ├─ plugins/          # msw, sentry
    ├─ utils/            # money, dates, localized text, digits
    ├─ constants/        # navigation.ts (incl. hidden out-of-scope items)
    ├─ config/env.ts
@@ -109,9 +107,10 @@ Data flows one way: **view → component → composable → service → `http.ts
 | Folder | May import | Must never import |
 |---|---|---|
 | `views` | components, composables | services |
-| `components/<feature>` | `components/base`, composables, types, utils | services |
+| `components/<feature>` | `components/base`, composables, stores, types, utils | services |
 | `components/base` | utils | feature code, stores |
 | `composables` | services, stores, schemas, types, utils | components |
+| `stores` | types | services, composables, components (state only; composables do the fetching) |
 | `services` | `http.ts`, types | composables, components, stores, router |
 | `schemas` · `types` · `utils` | each other | anything Vue |
 | `mocks` | types | — (imported only by `plugins/msw` and the test setup) |
@@ -126,10 +125,14 @@ PascalCase component files · multi-word names · `Base` prefix for the kit · c
 
 ### 3.4 Data
 
-- **Server data** lives in TanStack Query; **Pinia** only holds browser-only state (the locale).
-- Cache keys are defined once in `composables/queryKeys.ts`.
+- **Server data is loaded by hand**; there's no data-fetching library.
+  - Each screen's composable holds its data, loading and error state in refs, loads on mount and exposes `reload()`.
+  - A failed load shows Retry. Nothing retries automatically.
+  - A drawer fetches its own record by ID.
+- **Pinia** holds the locale and the signed-in user (`/me`). The user is the only server data shared across the app.
+- Where a screen can fire overlapping requests, the composable cancels the older one (`AbortController`), so a late response never overwrites a newer one.
 - Lists are loaded whole (`limit=500`, the backend's maximum) and filtered and sorted in the browser.
-- Inline edits update the cache immediately and roll back on failure.
+- Inline edits update the local data immediately and roll back on failure.
 
 ### 3.5 Routing
 
@@ -155,7 +158,7 @@ PascalCase component files · multi-word names · `Base` prefix for the kit · c
 1. **Start-up:** splash (only if it takes over 0.2 s) → refresh → `GET /me` → apply the account's language → open the requested page; otherwise `/login`.
 2. **Sign in:** "Email or username" + password (Show) + "Keep me signed in" → `POST /auth/login` (`identifier`, `password`, `deviceType: 'web'`, `deviceName` from the browser, e.g. "Chrome on Windows"). Errors: one generic message for wrong details; a suspended account says so; too many attempts says when to try again. A language switched on the login page is saved to the account.
 3. **Forgot password:** email or phone + choose email or WhatsApp → "We sent a code to em\*\*\*@…" + 6-digit code (5-minute countdown, Resend) → new password twice → back to sign in. Step 1 always answers "If an account exists, we sent a code".
-4. **Sign out:** `POST /auth/logout` with the refresh token, wipe the stored token and all cached data, go to `/login`.
+4. **Sign out:** `POST /auth/logout` with the refresh token, wipe the stored token and the signed-in user, go to `/login`.
 5. **Session expires mid-work:** a dialog over the page (email locked, password, "Not you? Sign out"); the page and any open drawer stay untouched.
 6. **Access changes:** a 403 → reload `/me`, update the screen, toast "Your access has changed". `/me` also reloads when the tab regains focus.
 7. Two tabs handle expiry independently.
@@ -337,7 +340,7 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 - **Forgot password:** `verify` returns a new `transactionalToken`, and that one goes to `reset`.
 - **Uploads:** `GET /uploads/purposes` says which file types and sizes each purpose allows; the dashboard reads it instead of hard-coding (20 MB is only the fallback). Today only `USER_AVATAR` exists.
 - **Not used in phase 1:** registration, re-authentication, email/phone verification, sessions and force-logout, account deletion, device tokens, notifications, broadcasts, audit logs.
-- **Types:** `npm run api:types` generates from the backend spec; categories, items and banners come from `contract/openapi.yaml` until the backend builds them.
+- **Types:** written by hand in `types/<feature>.ts`. Each one names the backend schema it mirrors (e.g. `ProfileDto`) and is checked against `docs/backend-openapi.json` whenever the backend changes. Categories, items and banners follow `docs/backend-architecture.md` until the backend builds them.
 
 ---
 
@@ -359,7 +362,7 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 | M7 | `can()` switched off on screens | Switching it on (completion, not removal) |
 | M8 | Mock sign-in, tokens, forgot-password code | Backend auth |
 | M9 | Mock uploads (browser links) | `/uploads` |
-| M10 | Categories, items, banners types from our draft | The backend spec once built |
+| M10 | Categories, items, banners types written from the backend's design doc | Checked against the live spec once built |
 | M11 | Proposed text limits | Final limits |
 | M12 | `msw` package | Removed if tests stop using it |
 | M13 | Role colour field | The backend's field once it's in the live spec |

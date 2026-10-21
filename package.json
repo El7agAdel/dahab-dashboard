@@ -11,9 +11,11 @@
     "test:e2e": "playwright test",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "lint": "run-s \"lint:*\"",
+    "lint": "run-s lint:oxlint lint:eslint",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
+    "lint:check": "oxlint . && eslint .",
+    "lint:launch": "oxlint . && eslint .",
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
@@ -24,7 +26,6 @@
     "@lucide/vue": "^1.61.0",
     "@sentry/vue": "^11.8.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/vue-query": "^5.104.5",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^15.0.0",
     "axios": "^1.20.0",

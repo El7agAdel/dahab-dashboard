@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Server-side staging deploy of the dashboard.
+# Server-side deploy of the dashboard to production (https://admin.dahabsweetseg.com).
 #
 # Uploaded to the server by .github/workflows/deploy.yml and executed there.
 # Can also be run by hand on the server:
@@ -8,14 +8,14 @@
 #   ./deploy.sh sha-abc1234                # incoming/sha-abc1234.tar.gz, or releases/sha-abc1234 if it is still here
 #   ./deploy.sh "$(cat .release.prev)"     # roll back to the previous release
 #
-# The dashboard is static files, served by the backend's Caddy straight from
+# The dashboard is static files, served by the server's Caddy straight from
 # $DEPLOY_DIR/current (scripts/server-setup.sh adds that site). A release is one
 # build's dist/, unpacked into releases/<name>, and deploying points the
 # `current` symlink at it. The switch is a single rename, so a visitor gets the
-# old build or the new one, never a mix. Nothing restarts: the API, its
-# containers and Caddy itself are not touched.
+# old build or the new one, never a mix. Nothing restarts: the API, the
+# storefront, their containers and Caddy itself are not touched.
 #
-# It keeps the newest $KEEP_RELEASES releases (~1.5 MB each), always including
+# It keeps the newest $KEEP_RELEASES releases (~2.5 MB each), always including
 # the live one and the one it replaced (.release.prev). Rolling back further than
 # that means rebuilding the commit in CI.
 #
@@ -25,9 +25,9 @@ set -euo pipefail
 # directory, so a manual ./deploy.sh on the server needs no extra environment.
 DEPLOY_DIR="${DEPLOY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 KEEP_RELEASES="${KEEP_RELEASES:-5}"
-# Where the served index.html is fetched from to confirm the switch. CI passes
-# the public URL; the default is the :8080 site that scripts/server-setup.sh creates.
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080}"
+# Where the served index.html is fetched from to confirm the switch: the site
+# that scripts/server-setup.sh creates. CI passes the same URL.
+HEALTH_URL="${HEALTH_URL:-https://admin.dahabsweetseg.com}"
 # DRY_RUN=true unpacks and checks the release, but doesn't switch to it.
 DRY_RUN="${DRY_RUN:-false}"
 
@@ -187,9 +187,9 @@ if [[ -n "$PREVIOUS" && "$PREVIOUS" != "$RELEASE" && -d "releases/$PREVIOUS" ]];
     switch_to "$PREVIOUS"
 
     if check_served "$PREVIOUS"; then
-        echo "==> Rollback succeeded. Staging is serving $PREVIOUS." >&2
+        echo "==> Rollback succeeded. $HEALTH_URL is serving $PREVIOUS." >&2
     else
-        echo "==> Staging is not serving $PREVIOUS either: Caddy, not the release, is the problem." >&2
+        echo "==> $HEALTH_URL is not serving $PREVIOUS either: Caddy or DNS, not the release, is the problem." >&2
         echo "    Is the dashboard's site in /etc/caddy? See docs/ci-cd.md, Troubleshooting." >&2
     fi
 else

@@ -325,7 +325,7 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 
 ## 8. Backend integration
 
-- **Backend:** `http://167.71.141.187` is the one the dashboard hooks onto (development and staging). Local development proxies `/api` through Vite.
+- **Backend:** `https://api.dahabsweetseg.com` (server `134.122.48.155`, which replaced `167.71.141.187` on 2026-11-13) is the one the dashboard hooks onto. Local development proxies `/api` through Vite.
 - **Built and used now:** `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password/{request,verify,reset}`, `/me`, `/users` (+ `/suspend`, `/unsuspend`, `/email`, `/phone`), `/users/:userId/roles` (`PUT`), `/roles`, `/roles/:roleId/permissions` (`PUT`), `/permissions`, `/uploads`, `/categories` (+ `PUT /order`), `/items` (+ `PATCH /:id/variants/:variantId`), `/banners` (+ `PUT /order`). Everything phase 1 uses exists (2026-10-22).
 - **Catalog writes:**
   - Items and banners save with **`PUT` and the whole form**; a text left out is cleared, so the drawers always send everything.
@@ -371,13 +371,14 @@ Login route JS ≤ 170 KB gz · each page chunk ≤ 60 KB gz · CSS ≤ 25 KB gz
 
 | | Local | Staging | Production |
 |---|---|---|---|
-| API | The existing backend (Vite proxy) | The existing backend | Decided later |
+| API | The existing backend (Vite proxy) | None yet | `https://api.dahabsweetseg.com` |
+| Dashboard | `localhost:5173` | None yet | `https://admin.dahabsweetseg.com` |
 
 - **Settings:** `VITE_API_BASE_URL`, `VITE_STOREFRONT_URL`, `VITE_APP_ENV`, `VITE_SENTRY_DSN` — all public; no secrets.
 - **Code:** GitHub; Dependabot weekly grouped updates with a 5-day cooldown.
-- **Releases:** merges to `main` deploy to staging; production deploys from version tags after the manual device and speed checks; rollback = redeploy the previous tag.
+- **Releases:** the plan is merges to `main` deploy to staging, and production deploys from version tags after the manual device and speed checks; rollback = redeploy the previous tag. Until a staging exists, merges to `main` deploy to production (`docs/ci-cd.md`).
 - **Monitoring:** Sentry in staging and production, loaded after start-up, tokens and personal data scrubbed (member ID only), source maps uploaded privately (client agreed).
-- **Hosting, domain and HTTPS:** decided later. The host must serve `index.html` for every route, cache hashed assets for a year and `index.html` never, and send the security headers (CSP, HSTS, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-Robots-Tag: noindex`).
+- **Hosting, domain and HTTPS:** Caddy on `134.122.48.155`, shared with the API and the storefront, at `https://admin.dahabsweetseg.com` with an automatic certificate (`docs/ci-cd.md`). The host must serve `index.html` for every route, cache hashed assets for a year and `index.html` never, and send the security headers (CSP, HSTS, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-Robots-Tag: noindex`).
 
 ---
 

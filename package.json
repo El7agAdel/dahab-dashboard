@@ -18,7 +18,7 @@
     "lint:launch": "oxlint . && eslint .",
     "format": "prettier --write --experimental-cli src/",
     "format:check": "prettier --check --experimental-cli src/",
-    "audit:prod": "npm audit --omit=dev --audit-level=high"
+    "audit:prod": "node scripts/audit-prod.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

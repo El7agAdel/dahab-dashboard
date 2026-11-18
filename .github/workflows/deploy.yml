@@ -1,4 +1,4 @@
-name: Deploy to staging
+name: Deploy to production
 
 on:
   push:
@@ -18,12 +18,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-staging
+  group: deploy-production
   cancel-in-progress: false
 
 env:
   DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/var/www/dahab-dashboard' }}
   SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+  # Where the dashboard is served. Both the server-side and the public check fetch it.
+  APP_URL: ${{ vars.PRODUCTION_URL || 'https://admin.dahabsweetseg.com' }}
 
 jobs:
   ci:
@@ -46,8 +48,8 @@ jobs:
         id: meta
         run: echo "release=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build with .env.staging
-        run: npm run build-only -- --mode staging
+      - name: Build with .env.production
+        run: npm run build-only -- --mode production
 
       - name: Check that MSW is not in the build
         run: |
@@ -75,12 +77,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
-      name: staging
-      url: ${{ vars.STAGING_URL }}
+      name: production
+      url: ${{ env.APP_URL }}
     env:
       RELEASE: ${{ inputs.release || needs.build.outputs.release }}
       DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
-      STAGING_URL: ${{ vars.STAGING_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -127,12 +128,12 @@ jobs:
 
       - name: Deploy ${{ env.RELEASE }}
         run: |
-          ssh deploy-target "DEPLOY_DIR='$DEPLOY_DIR' DRY_RUN='$DRY_RUN' HEALTH_URL='$STAGING_URL' '$DEPLOY_DIR/deploy.sh' '$RELEASE'"
+          ssh deploy-target "DEPLOY_DIR='$DEPLOY_DIR' DRY_RUN='$DRY_RUN' HEALTH_URL='$APP_URL' '$DEPLOY_DIR/deploy.sh' '$RELEASE'"
 
       - name: Check the public URL
-        if: ${{ env.STAGING_URL != '' && env.DRY_RUN != 'true' }}
+        if: ${{ env.DRY_RUN != 'true' }}
         run: |
-          url="${STAGING_URL%/}/"
+          url="${APP_URL%/}/"
           # A fresh build must be served byte for byte; a redeploy was already compared on the server
           if [[ -f "$RELEASE.tar.gz" ]]; then
             tar -xzOf "$RELEASE.tar.gz" ./index.html > expected.html
@@ -146,5 +147,5 @@ jobs:
             fi
             sleep 6
           done
-          echo "::error::$url is not serving $RELEASE from outside the server (firewall?)"
+          echo "::error::$url is not serving $RELEASE from outside the server (DNS, firewall?)"
           exit 1
